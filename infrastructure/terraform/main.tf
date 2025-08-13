@@ -36,7 +36,7 @@ module "services" {
   for_each  = toset(local.services)
   source    = "./modules/fly_service"
   app_name  = "${each.key}-${var.env}"
-  image     = "ghcr.io/ORG/${each.key}:latest"
+  image     = "ghcr.io/ssofienvision/${each.key}:latest"
   env_map   = {
     ENV = var.env
   }
