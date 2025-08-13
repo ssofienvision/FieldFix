@@ -3,7 +3,7 @@ app = "__APP_NAME__"
 primary_region = "iad"
 
 [build]
-  image = "ghcr.io/ORG/__SERVICE__:latest"
+  image = "ghcr.io/ssofienvision/__SERVICE__:latest"
 
 [env]
   PORT = "3000"
