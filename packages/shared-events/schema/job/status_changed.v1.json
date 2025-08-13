@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/events/job/status_changed.v1.json",
+  "title": "job.status_changed v1",
+  "type": "object",
+  "properties": {
+    "jobId": { "type": "string", "format": "uuid" },
+    "previousStatus": { "type": "string" },
+    "newStatus": { "type": "string" },
+    "reason": { "type": ["string", "null"] },
+    "technicianId": { "type": ["string", "null"], "format": "uuid" },
+    "customerId": { "type": ["string", "null"], "format": "uuid" },
+    "serviceType": { "type": ["string", "null"] }
+  },
+  "required": ["jobId", "previousStatus", "newStatus"],
+  "additionalProperties": false
+}
