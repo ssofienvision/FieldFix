@@ -1,0 +1,19 @@
+app = "communications-audit-staging"
+primary_region = "iad"
+kill_signal = "SIGINT"
+kill_timeout = 5
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3000"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[[services]]
+  internal_port = 3000
+  protocol = "tcp"
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
