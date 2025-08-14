@@ -1,0 +1,37 @@
+name: prod
+on:
+  push:
+    tags: [ 'v*.*.*' ]
+jobs:
+  verify-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/verify_contracts.sh
+  deploy-prod:
+    needs: verify-contracts
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://app.example.com
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install psql client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+      - name: DB migrate (contract step)
+        env:
+          PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
+        run: bash scripts/migrate_contract.sh "$PROD_DB_URL"
+      - name: Canary 10% for changed services
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: bash scripts/deploy_changed_services.sh "prod" "prod-canary"
+      - name: Post-deploy checks
+        run: bash scripts/post_deploy_checks.sh
+      - name: Promote canary → 100%
+        if: success()
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: bash scripts/promote_canary.sh
