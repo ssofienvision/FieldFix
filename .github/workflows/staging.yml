@@ -1,0 +1,27 @@
+name: staging
+on:
+  push:
+    branches: [ main ]
+jobs:
+  ci:
+    uses: ./.github/workflows/reusable-ci.yml
+  deploy-staging:
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install psql client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+      - name: Run migrations (expand-safe)
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+        run: bash scripts/migrate_expand.sh "$STAGING_DB_URL"
+      - name: Deploy changed services to staging
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: bash scripts/deploy_changed_services.sh "staging" "staging"
+      - name: Smoke tests
+        run: bash scripts/smoke_tests.sh
