@@ -1,0 +1,11 @@
+{
+  "name": "work-management",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "health": "node -e \"fetch('http://localhost:'+ (process.env.PORT||3000) +'/health').then(()=>process.exit(0)).catch(()=>process.exit(1))\""
+  },
+  "dependencies": {}
+}
