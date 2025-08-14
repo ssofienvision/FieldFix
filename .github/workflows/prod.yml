@@ -1,14 +1,19 @@
-name: prod
+name: pr
 on:
-  push:
-    tags: [ 'v*.*.*' ]
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 jobs:
-  verify-contracts:
+  ci:
+    uses: ./.github/workflows/reusable-ci.yml
+
+  preview:
+    needs: ci
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # pnpm on PATH in case your verify script uses it
+
+      # Ensure pnpm exists in preview job too (if scripts use it)
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -20,51 +25,28 @@ jobs:
         with:
           version: 9
           run_install: false
-      - name: Verify contracts
-        run: bash scripts/verify_contracts.sh
+      - name: Check pnpm
+        run: pnpm -v
 
-  deploy-prod:
-    needs: verify-contracts
-    runs-on: ubuntu-latest
-    environment:
-      name: production
-      url: https://app.example.com
-    steps:
-      - uses: actions/checkout@v4
-
-      # pnpm on PATH for any deploy-time scripts
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-          cache-dependency-path: '**/pnpm-lock.yaml'
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-          run_install: false
-
-      - name: Install psql client
+      - name: Compute changed services
+        id: changed
         run: |
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client
+          base_ref="${{ github.base_ref || 'main' }}"
+          CHANGED=$(bash scripts/changed_services.sh "$base_ref")
+          echo "changed=$CHANGED" >> $GITHUB_OUTPUT
 
-      - name: DB migrate (contract step)
-        env:
-          PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
-        run: bash scripts/migrate_contract.sh "$PROD_DB_URL"
+      - name: Vercel Preview (web-portal)
+        if: hashFiles('apps/web-portal/package.json') != ''
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_WEB_PROJECT_ID }}
+          working-directory: apps/web-portal
+          scope: ${{ secrets.VERCEL_ORG_ID }}
 
-      - name: Canary 10% for changed services
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: bash scripts/deploy_changed_services.sh "prod" "prod-canary"
-
-      - name: Post-deploy checks
-        run: bash scripts/post_deploy_checks.sh
-
-      - name: Promote canary → 100%
-        if: success()
+      - name: Fly.io Deploy Preview (changed services)
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: bash scripts/promote_canary.sh
+          PREVIEW_ID: pr-${{ github.event.number }}
+        run: bash scripts/deploy_changed_services.sh "$PREVIEW_ID" "preview"
