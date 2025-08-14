@@ -1,4 +1,5 @@
 name: reusable-ci
+
 on:
   workflow_call:
     inputs:
@@ -19,38 +20,42 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Node first
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          # Cache for pnpm if/when a pnpm-lock.yaml exists
           cache: 'pnpm'
           cache-dependency-path: '**/pnpm-lock.yaml'
 
-      # ✅ Always install pnpm BEFORE any pnpm command runs
-      - name: Install pnpm
-        run: npm install -g pnpm@9
+      # ✅ Robust pnpm install (adds pnpm to PATH consistently)
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
 
-      # ---- Dependency install logic (works with or without lockfiles) ----
-      # If pnpm lockfile exists anywhere (monorepo-safe) → strict install
-      - name: Install deps with pnpm (locked)
-        if: ${{ hashFiles('**/pnpm-lock.yaml') != '' }}
-        run: pnpm install --frozen-lockfile
-
-      # If npm lockfile exists instead → npm ci
-      - name: Install deps with npm ci
-        if: ${{ hashFiles('**/pnpm-lock.yaml') == '' && (hashFiles('**/package-lock.json') != '' || hashFiles('**/npm-shrinkwrap.json') != '') }}
-        run: npm ci
-
-      # No lockfile at all → do a non-frozen install so CI can proceed
-      - name: Install deps (no lockfile present)
-        if: ${{ hashFiles('**/pnpm-lock.yaml') == '' && hashFiles('**/package-lock.json') == '' && hashFiles('**/npm-shrinkwrap.json') == '' && hashFiles('**/yarn.lock') == '' }}
+      - name: Print tool versions
         run: |
-          echo "No lockfile found. Installing with pnpm (non-frozen)."
-          pnpm install || true
+          node -v
+          npm -v
+          pnpm -v
 
-      # Best-effort checks — won’t fail if scripts don’t exist yet
+      # ---- Dependency install logic (monorepo-safe, no silent skips) ----
+      # Prefer pnpm if a pnpm lock exists anywhere
+      - name: Install deps with pnpm (frozen if lock exists)
+        run: |
+          if [ -n "$(git ls-files '**/pnpm-lock.yaml')" ]; then
+            echo "Found pnpm-lock.yaml → running pnpm install --frozen-lockfile (workspace-aware if present)"
+            pnpm install --frozen-lockfile
+          elif [ -n "$(git ls-files '**/package-lock.json' '**/npm-shrinkwrap.json')" ]; then
+            echo "Found npm lockfile → running npm ci at repo root"
+            npm ci || true
+          else
+            echo "No lockfile found → running pnpm install (non-frozen) to proceed"
+            pnpm install || true
+          fi
+
+      # Best-effort static checks (won’t fail if scripts don’t exist yet)
       - name: Lint & Typecheck (best-effort)
         run: |
           pnpm -w run lint || echo "lint skipped"
@@ -63,7 +68,7 @@ jobs:
       - name: Build Docker images for changed services
         env:
           REGISTRY: ghcr.io/${{ github.repository_owner }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # for GHCR login
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # needed for GHCR login
         run: bash scripts/build_and_push_images.sh
 
       - name: Container scan with Trivy (non-blocking)
