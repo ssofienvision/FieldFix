@@ -2,33 +2,38 @@ name: pr
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+
 jobs:
+  # 1) Shared CI (lint/test/build/push) using the reusable workflow
   ci:
-  - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-          run_install: false
-
-      - name: Check pnpm
-        run: pnpm -v
     uses: ./.github/workflows/reusable-ci.yml
+
+  # 2) Preview deploy after CI succeeds
   preview:
     needs: ci
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Ensure Node + pnpm exist IN THIS JOB
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Ensure pnpm on PATH
+        run: bash scripts/pnpm_ensure.sh
+
+      - name: Check pnpm
+        run: pnpm -v
+
       - name: Compute changed services
         id: changed
         run: |
           base_ref="${{ github.base_ref || 'main' }}"
           CHANGED=$(bash scripts/changed_services.sh "$base_ref")
           echo "changed=$CHANGED" >> $GITHUB_OUTPUT
+
       - name: Vercel Preview (web-portal)
         if: hashFiles('apps/web-portal/package.json') != ''
         uses: amondnet/vercel-action@v25
@@ -38,6 +43,7 @@ jobs:
           vercel-project-id: ${{ secrets.VERCEL_WEB_PROJECT_ID }}
           working-directory: apps/web-portal
           scope: ${{ secrets.VERCEL_ORG_ID }}
+
       - name: Fly.io Deploy Preview (changed services)
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
