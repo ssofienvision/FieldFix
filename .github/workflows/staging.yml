@@ -27,8 +27,8 @@ jobs:
           version: 9
           run_install: false
 
-      - name: Install psql client
-        run: |
+      - name: Check pnpm
+        run: pnpm -v
           sudo apt-get update
           sudo apt-get install -y postgresql-client
 
