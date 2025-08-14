@@ -14,22 +14,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # pnpm on PATH for any future pnpm usage in deploy scripts
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm'
-          cache-dependency-path: '**/pnpm-lock.yaml'
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-          run_install: false
+
+      - name: Ensure pnpm on PATH
+        run: bash scripts/pnpm_ensure.sh
 
       - name: Check pnpm
         run: pnpm -v
-        
+
       - name: Install psql client
         run: |
           sudo apt-get update
