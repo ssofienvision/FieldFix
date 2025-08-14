@@ -8,7 +8,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # pnpm on PATH in case your verify script uses it
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -20,6 +19,8 @@ jobs:
         with:
           version: 9
           run_install: false
+      - name: Check pnpm
+        run: pnpm -v
       - name: Verify contracts
         run: bash scripts/verify_contracts.sh
 
@@ -32,7 +33,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # pnpm on PATH for any deploy-time scripts
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -44,6 +44,8 @@ jobs:
         with:
           version: 9
           run_install: false
+      - name: Check pnpm
+        run: pnpm -v
 
       - name: Install psql client
         run: |
