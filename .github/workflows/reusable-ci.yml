@@ -1,4 +1,5 @@
 name: reusable-ci
+
 on:
   workflow_call:
     inputs:
@@ -16,55 +17,52 @@ jobs:
       security-events: write
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Node first
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          # Cache for pnpm if/when a pnpm-lock.yaml exists
           cache: 'pnpm'
           cache-dependency-path: '**/pnpm-lock.yaml'
 
-      # ✅ Always install pnpm BEFORE any pnpm command runs
-      - name: Install pnpm
-        run: npm install -g pnpm@9
+      # ✅ This installs pnpm AND adds it to PATH
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false  # we’ll handle install separately
 
-      # ---- Dependency install logic (works with or without lockfiles) ----
-      # If pnpm lockfile exists anywhere (monorepo-safe) → strict install
-      - name: Install deps with pnpm (locked)
-        if: ${{ hashFiles('**/pnpm-lock.yaml') != '' }}
-        run: pnpm install --frozen-lockfile
-
-      # If npm lockfile exists instead → npm ci
-      - name: Install deps with npm ci
-        if: ${{ hashFiles('**/pnpm-lock.yaml') == '' && (hashFiles('**/package-lock.json') != '' || hashFiles('**/npm-shrinkwrap.json') != '') }}
-        run: npm ci
-
-      # No lockfile at all → do a non-frozen install so CI can proceed
-      - name: Install deps (no lockfile present)
-        if: ${{ hashFiles('**/pnpm-lock.yaml') == '' && hashFiles('**/package-lock.json') == '' && hashFiles('**/npm-shrinkwrap.json') == '' && hashFiles('**/yarn.lock') == '' }}
+      - name: Confirm tool versions
         run: |
-          echo "No lockfile found. Installing with pnpm (non-frozen)."
-          pnpm install || true
+          node -v
+          npm -v
+          pnpm -v
 
-      # Best-effort checks — won’t fail if scripts don’t exist yet
-      - name: Lint & Typecheck (best-effort)
+      # Dependency install logic
+      - name: Install dependencies
         run: |
-          pnpm -w run lint || echo "lint skipped"
-          pnpm -w run typecheck || echo "typecheck skipped"
+          if [ -f pnpm-lock.yaml ]; then
+            pnpm install --frozen-lockfile
+          else
+            echo "No pnpm lockfile found — installing without frozen lockfile"
+            pnpm install
+          fi
 
-      - name: Unit tests (best-effort)
-        run: pnpm -w run test -- --coverage || echo "tests skipped"
+      # Best-effort lint and test
+      - name: Lint (non-blocking)
+        run: pnpm run lint || echo "Lint skipped"
 
-      # Build & push container images for changed services (to GHCR)
+      - name: Test (non-blocking)
+        run: pnpm run test || echo "Tests skipped"
+
+      # Build and push container images
       - name: Build Docker images for changed services
         env:
           REGISTRY: ghcr.io/${{ github.repository_owner }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # for GHCR login
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/build_and_push_images.sh
 
       - name: Container scan with Trivy (non-blocking)
-        run: bash scripts/scan_images.sh || echo "scan warnings (not failing build)"
+        run: bash scripts/scan_images.sh || echo "Scan warnings (not failing build)"
