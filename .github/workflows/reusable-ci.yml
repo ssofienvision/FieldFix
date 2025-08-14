@@ -5,6 +5,7 @@ on:
       service:
         required: false
         type: string
+
 jobs:
   ci:
     runs-on: ubuntu-latest
@@ -13,27 +14,42 @@ jobs:
       contents: read
       packages: write
       security-events: write
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'pnpm' }
-      - uses: pnpm/action-setup@v4
-        with: { version: '9' }
-      - name: Install deps
-        if: hashFiles('pnpm-lock.yaml') != ''
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # ✅ Always install pnpm so later steps never fail
+      - name: Install pnpm
+        run: npm install -g pnpm@9
+
+      # ✅ Use a broad lockfile glob so monorepos work
+      - name: Install deps (if lockfile exists)
+        if: ${{ hashFiles('**/pnpm-lock.yaml') != '' }}
         run: pnpm install --frozen-lockfile
-      - name: Lint & Typecheck
-        if: hashFiles('pnpm-lock.yaml') != ''
+
+      - name: Lint & Typecheck (best-effort)
+        if: ${{ hashFiles('**/pnpm-lock.yaml') != '' }}
         run: |
           pnpm -w run lint || echo "lint skipped"
           pnpm -w run typecheck || echo "typecheck skipped"
-      - name: Unit tests
-        if: hashFiles('pnpm-lock.yaml') != ''
+
+      - name: Unit tests (best-effort)
+        if: ${{ hashFiles('**/pnpm-lock.yaml') != '' }}
         run: pnpm -w run test -- --coverage || echo "tests skipped"
+
+      # Build & push container images for changed services
       - name: Build Docker images for changed services
         env:
           REGISTRY: ghcr.io/${{ github.repository_owner }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # for GHCR login
         run: bash scripts/build_and_push_images.sh
-      - name: Container scan with Trivy
-        run: bash scripts/scan_images.sh || echo "scan warnings"
+
+      - name: Container scan with Trivy (non-blocking)
+        run: bash scripts/scan_images.sh || echo "scan warnings (not failing build)"
