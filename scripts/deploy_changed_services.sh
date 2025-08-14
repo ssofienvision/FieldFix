@@ -1,5 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# --- Ensure pnpm is available on this runner (no-op if already installed) ---
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "pnpm not found on PATH; installing with npm..."
+  npm install -g pnpm@9
+  if ! command -v pnpm >/dev/null 2>&1; then
+    echo "Failed to install pnpm on runner PATH"; exit 1
+  fi
+  pnpm -v
+fi
+
 ENV_SUFFIX="${1:-staging}"
 DEPLOY_MODE="${2:-staging}" # preview | staging | prod-canary | prod
 
