@@ -2,26 +2,45 @@ name: staging
 on:
   push:
     branches: [ main ]
+
 jobs:
   ci:
     uses: ./.github/workflows/reusable-ci.yml
+
   deploy-staging:
     needs: ci
     runs-on: ubuntu-latest
     environment: staging
     steps:
       - uses: actions/checkout@v4
+
+      # pnpm on PATH for any future pnpm usage in deploy scripts
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: '**/pnpm-lock.yaml'
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
       - name: Install psql client
         run: |
           sudo apt-get update
           sudo apt-get install -y postgresql-client
+
       - name: Run migrations (expand-safe)
         env:
           STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
         run: bash scripts/migrate_expand.sh "$STAGING_DB_URL"
+
       - name: Deploy changed services to staging
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: bash scripts/deploy_changed_services.sh "staging" "staging"
+
       - name: Smoke tests
         run: bash scripts/smoke_tests.sh
