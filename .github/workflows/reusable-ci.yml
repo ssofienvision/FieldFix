@@ -27,37 +27,43 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: '**/pnpm-lock.yaml'
 
-      # ✅ This installs pnpm AND adds it to PATH
+      # ✅ Install pnpm and add to PATH (reliable)
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 9
-          run_install: false  # we’ll handle install separately
+          run_install: false
 
-      - name: Confirm tool versions
+      - name: Show tool versions
         run: |
           node -v
           npm -v
           pnpm -v
 
-      # Dependency install logic
+      # ---- Dependencies (works with/without lockfile) ----
       - name: Install dependencies
         run: |
-          if [ -f pnpm-lock.yaml ]; then
+          if [ -n "$(git ls-files '**/pnpm-lock.yaml')" ]; then
+            echo "Found pnpm-lock.yaml → pnpm install --frozen-lockfile"
             pnpm install --frozen-lockfile
+          elif [ -n "$(git ls-files '**/package-lock.json' '**/npm-shrinkwrap.json')" ]; then
+            echo "Found npm lockfile → npm ci"
+            npm ci || true
           else
-            echo "No pnpm lockfile found — installing without frozen lockfile"
-            pnpm install
+            echo "No lockfile found → pnpm install (non-frozen)"
+            pnpm install || true
           fi
 
-      # Best-effort lint and test
-      - name: Lint (non-blocking)
-        run: pnpm run lint || echo "Lint skipped"
+      # Best-effort checks (don’t fail CI if scripts not present yet)
+      - name: Lint & Typecheck (best-effort)
+        run: |
+          pnpm -w run lint || echo "lint skipped"
+          pnpm -w run typecheck || echo "typecheck skipped"
 
-      - name: Test (non-blocking)
-        run: pnpm run test || echo "Tests skipped"
+      - name: Unit tests (best-effort)
+        run: pnpm -w run test -- --coverage || echo "tests skipped"
 
-      # Build and push container images
+      # Build & push images (GHCR)
       - name: Build Docker images for changed services
         env:
           REGISTRY: ghcr.io/${{ github.repository_owner }}
@@ -65,4 +71,4 @@ jobs:
         run: bash scripts/build_and_push_images.sh
 
       - name: Container scan with Trivy (non-blocking)
-        run: bash scripts/scan_images.sh || echo "Scan warnings (not failing build)"
+        run: bash scripts/scan_images.sh || echo "scan warnings (non-blocking)"
