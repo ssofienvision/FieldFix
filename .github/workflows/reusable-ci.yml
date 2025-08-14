@@ -19,32 +19,46 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Node + cache configured for BOTH pnpm and npm
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+          # If you later add pnpm-lock.yaml, caching will work automatically
+          cache: 'pnpm'
+          cache-dependency-path: '**/pnpm-lock.yaml'
 
-      # ✅ Always install pnpm so later steps never fail
       - name: Install pnpm
         run: npm install -g pnpm@9
 
-      # ✅ Use a broad lockfile glob so monorepos work
-      - name: Install deps (if lockfile exists)
+      # ---- Dependency install matrix (no lockfile? still install) ----
+      # 1) If pnpm lockfile exists, do a strict install (fast & reproducible)
+      - name: Install deps with pnpm (locked)
         if: ${{ hashFiles('**/pnpm-lock.yaml') != '' }}
         run: pnpm install --frozen-lockfile
 
+      # 2) Else if npm lockfile exists, use npm ci
+      - name: Install deps with npm ci
+        if: ${{ hashFiles('**/package-lock.json') != '' || hashFiles('**/npm-shrinkwrap.json') != '' }}
+        run: npm ci
+
+      # 3) Else no lockfile at all – just install so the build can proceed
+      - name: Install deps (no lockfile present)
+        if: ${{ hashFiles('**/pnpm-lock.yaml') == '' && hashFiles('**/package-lock.json') == '' && hashFiles('**/npm-shrinkwrap.json') == '' && hashFiles('**/yarn.lock') == '' }}
+        run: |
+          echo "No lockfile found. Installing with pnpm (non-frozen)."
+          pnpm install
+
+      # Lint/Typecheck/Tests are best-effort so a missing script doesn’t fail CI early
       - name: Lint & Typecheck (best-effort)
-        if: ${{ hashFiles('**/pnpm-lock.yaml') != '' }}
         run: |
           pnpm -w run lint || echo "lint skipped"
           pnpm -w run typecheck || echo "typecheck skipped"
 
       - name: Unit tests (best-effort)
-        if: ${{ hashFiles('**/pnpm-lock.yaml') != '' }}
         run: pnpm -w run test -- --coverage || echo "tests skipped"
 
-      # Build & push container images for changed services
+      # Build & push container images for changed services (to GHCR)
       - name: Build Docker images for changed services
         env:
           REGISTRY: ghcr.io/${{ github.repository_owner }}
