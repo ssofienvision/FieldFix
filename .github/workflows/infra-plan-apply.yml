@@ -1,0 +1,19 @@
+name: infra-plan-apply
+on:
+  workflow_dispatch:
+    inputs:
+      action: { description: 'plan or apply', required: true, type: choice, options: [plan, apply] }
+      env: { description: 'Environment', required: true, type: choice, options: [dev, staging, prod] }
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: infrastructure/terraform } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: 1.7.5 }
+      - run: terraform init -upgrade
+      - if: ${{ inputs.action == 'plan' }}
+        run: terraform plan -var="env=${{ inputs.env }}"
+      - if: ${{ inputs.action == 'apply' }}
+        run: terraform apply -auto-approve -var="env=${{ inputs.env }}"
