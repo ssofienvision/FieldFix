@@ -17,7 +17,7 @@ jobs:
       security-events: write
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -27,7 +27,6 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: '**/pnpm-lock.yaml'
 
-      # ✅ Install pnpm and add to PATH (reliable)
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -40,21 +39,19 @@ jobs:
           npm -v
           pnpm -v
 
-      # ---- Dependencies (works with/without lockfile) ----
       - name: Install dependencies
         run: |
           if [ -n "$(git ls-files '**/pnpm-lock.yaml')" ]; then
-            echo "Found pnpm-lock.yaml → pnpm install --frozen-lockfile"
+            echo "pnpm lock found → frozen install"
             pnpm install --frozen-lockfile
           elif [ -n "$(git ls-files '**/package-lock.json' '**/npm-shrinkwrap.json')" ]; then
-            echo "Found npm lockfile → npm ci"
+            echo "npm lock found → npm ci"
             npm ci || true
           else
-            echo "No lockfile found → pnpm install (non-frozen)"
+            echo "no lockfile → pnpm install (non-frozen)"
             pnpm install || true
           fi
 
-      # Best-effort checks (don’t fail CI if scripts not present yet)
       - name: Lint & Typecheck (best-effort)
         run: |
           pnpm -w run lint || echo "lint skipped"
@@ -63,7 +60,6 @@ jobs:
       - name: Unit tests (best-effort)
         run: pnpm -w run test -- --coverage || echo "tests skipped"
 
-      # Build & push images (GHCR)
       - name: Build Docker images for changed services
         env:
           REGISTRY: ghcr.io/${{ github.repository_owner }}
