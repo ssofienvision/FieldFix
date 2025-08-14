@@ -14,7 +14,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # pnpm on PATH for any future pnpm usage in deploy scripts
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -26,6 +25,8 @@ jobs:
         with:
           version: 9
           run_install: false
+      - name: Check pnpm
+        run: pnpm -v
 
       - name: Install psql client
         run: |
