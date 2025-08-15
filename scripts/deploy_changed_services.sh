@@ -1,100 +1,101 @@
-#!/usr/bin/env bash
-set -euo pipefail
-set -x
-trap 'ec=$?; echo "[deploy] failed at line $LINENO with exit $ec"; exit $ec' ERR
+name: Deploy to Staging
 
-bash scripts/pnpm_ensure.sh
+on:
+  push:
+    branches: [main]
 
-CHANGED="$(bash scripts/changed_services.sh "${DEFAULT_BRANCH:-main}")" || true
-if [ -z "$CHANGED" ]; then
-  echo "[deploy] No changed services — nothing to deploy."
-  exit 0
-fi
+jobs:
+  # Reuse your shared CI (lint/test/build/push images)
+  ci:
+    uses: ./.github/workflows/reusable-ci.yml
 
-bash scripts/pnpm_ensure.sh
+  # Deploy to staging after CI succeeds
+  deploy-staging:
+    needs: ci
+    runs-on: ubuntu-latest
+    env:
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
 
-ENV_SUFFIX="${1:-staging}"        # e.g., 'staging', 'prod', 'pr-123'
-DEPLOY_MODE="${2:-staging}"       # 'preview' | 'staging' | 'prod-canary' | 'prod'
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-# Require token (but fail with a clear message)
-if [[ -z "${FLY_API_TOKEN:-}" ]]; then
-  echo "[deploy] ERROR: FLY_API_TOKEN is not set for this job. Add repo secret FLY_API_TOKEN."
-  exit 2
-fi
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
 
-# Determine changed services (empty -> nothing to do)
-CHANGED="$(bash scripts/changed_services.sh "${GITHUB_BASE_REF:-}")" || true
-if [[ -z "$CHANGED" ]]; then
-  echo "[deploy] No changed services — nothing to deploy. Exiting 0."
-  exit 0
-fi
-echo "[deploy] Will deploy these services:"
-echo "$CHANGED"
+      - name: Verify pnpm
+        run: |
+          echo "PNPM path: $(which pnpm)"
+          pnpm --version
 
-# Install flyctl if missing
-if ! command -v fly >/dev/null 2>&1; then
-  curl -L https://fly.io/install.sh | sh
-  export FLYCTL_INSTALL="$HOME/.fly"
-  export PATH="$FLYCTL_INSTALL/bin:$PATH"
-fi
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
-: "${FLY_REGION:=iad}"
-: "${FLY_ORG:=}"
+      - name: Install psql client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
 
-ensure_app() {
-  local app_name="$1"
-  # use token explicitly so fly never prompts
-  if ! fly --access-token "$FLY_API_TOKEN" status --app "$app_name" >/dev/null 2>&1; then
-    if [[ -n "$FLY_ORG" ]]; then
-      fly --access-token "$FLY_API_TOKEN" apps create "$app_name" --org "$FLY_ORG" --region "$FLY_REGION"
-    else
-      fly --access-token "$FLY_API_TOKEN" apps create "$app_name" --region "$FLY_REGION"
-    fi
-  fi
-}
+      - name: Git diagnostics
+        run: |
+          echo "[debug] Git configuration:"
+          git --version
+          git remote -v
+          git branch -a
+          echo "[debug] Fetching all refs:"
+          git fetch --no-tags --prune origin +refs/heads/*:refs/remotes/origin/*
+          echo "[debug] Commit verification:"
+          git show -s --oneline HEAD || echo "HEAD missing"
+          git show -s --oneline origin/main || echo "origin/main missing"
 
-while read -r SVC; do
-  [[ -z "$SVC" ]] && continue
-  SERVICE_DIR="apps/$SVC"
-  [[ -d "$SERVICE_DIR" ]] || { echo "[deploy] skip $SVC (no apps/$SVC)"; continue; }
+      - name: Debug env and changed services
+        run: |
+          echo "Environment checks:"
+          echo "STAGING_DB_URL set? $([[ -n "${STAGING_DB_URL:-}" ]] && echo yes || echo no)"
+          echo "FLY_API_TOKEN set? $([[ -n "${FLY_API_TOKEN:-}" ]] && echo yes || echo no)"
+          echo "GITHUB_BASE_REF=${GITHUB_BASE_REF:-}"
+          echo "Branch=${GITHUB_REF_NAME}"
+          
+          echo "Computing changed services..."
+          CHANGED_SERVICES=$(bash scripts/changed_services.sh "${GITHUB_BASE_REF:-$DEFAULT_BRANCH}")
+          echo "$CHANGED_SERVICES" | tee /tmp/changed.txt
+          echo "---- CHANGED SERVICES ----"
+          cat /tmp/changed.txt || true
+          echo "--------------------------"
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
-  # Must have a Dockerfile to build
-  if [[ ! -f "$SERVICE_DIR/Dockerfile" ]]; then
-    echo "[deploy] skip $SVC (no Dockerfile)"
-    continue
-  fi
+      - name: Check DB connectivity
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+        run: |
+          echo "[preflight] Testing DB connection..."
+          psql "$STAGING_DB_URL" -Atc "select 'db_ok'" || { 
+            echo "::error::DB connection failed. Check STAGING_DB_URL format.";
+            exit 1;
+          }
 
-  APP_NAME="${SVC}-${ENV_SUFFIX}"
-  CFG="$SERVICE_DIR/fly.toml"
+      - name: Run migrations
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+        run: bash scripts/migrate_expand.sh "$STAGING_DB_URL"
 
-  # Create or normalize fly.toml
-  if [[ ! -f "$CFG" ]]; then
-    cat > "$CFG" <<TOML
-app = "${APP_NAME}"
-primary_region = "${FLY_REGION}"
+      - name: Deploy changed services to staging
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          echo "Starting deployment..."
+          bash -x scripts/deploy_changed_services.sh "staging" "staging"
 
-[env]
-  PORT = "3000"
-
-[[services]]
-  internal_port = 3000
-  protocol = "tcp"
-
-  [[services.ports]]
-    port = 80
-    handlers = ["http"]
-TOML
-  else
-    sed -i "s/^app = \".*\"/app = \"${APP_NAME}\"/" "$CFG"
-  fi
-
-  ensure_app "$APP_NAME"
-
-  if [[ "$DEPLOY_MODE" == "prod-canary" ]]; then
-    fly --access-token "$FLY_API_TOKEN" deploy --config "$CFG" --strategy canary --auto-confirm
-  else
-    fly --access-token "$FLY_API_TOKEN" deploy --config "$CFG" --strategy immediate --auto-confirm
-  fi
-done <<< "$CHANGED"
-
-echo "[deploy] Done."
+      - name: Smoke tests
+        run: bash scripts/smoke_tests.sh
