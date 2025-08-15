@@ -40,14 +40,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-client
 
-      # 🔎 Show exactly what we’re about to deploy
+      # 🔎 Show exactly what we're about to deploy
       - name: Debug env and changed services
         run: |
           echo "STAGING_DB_URL set? $([[ -n "${STAGING_DB_URL:-}" ]] && echo yes || echo no)"
           echo "FLY_API_TOKEN set? $([[ -n "${FLY_API_TOKEN:-}" ]] && echo yes || echo no)"
           echo "GITHUB_BASE_REF=${GITHUB_BASE_REF:-}"
           echo "Branch=${GITHUB_REF_NAME}"
-          echo "Computing changed services…"
+          echo "Computing changed services..."
           bash scripts/changed_services.sh "${GITHUB_BASE_REF:-}" | tee /tmp/changed.txt
           echo "---- CHANGED:"
           cat /tmp/changed.txt || true
@@ -55,6 +55,13 @@ jobs:
         env:
           STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Check DB connectivity
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+        run: |
+          echo "[preflight] Testing DB connection..."
+          psql "$STAGING_DB_URL" -Atc "select 'db_ok'" || { echo "[preflight] DB connection failed. Check STAGING_DB_URL format."; exit 2; }
 
       - name: Run migrations (expand-safe)
         env:
