@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
+CHANGED="$(bash scripts/changed_services.sh "${DEFAULT_BRANCH:-main}")"
+if [ -z "$CHANGED" ]; then
+  echo "[build_and_push_images] No changed services — skipping image build."
+  exit 0
+fi
 
 REGISTRY="${REGISTRY:-ghcr.io/${GITHUB_REPOSITORY_OWNER}}"
 OWNER="$(echo "${GITHUB_REPOSITORY}" | cut -d'/' -f1)"
