@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+CHANGED="$(bash scripts/changed_services.sh "${GITHUB_BASE_REF:-}")"
+if [ -z "$CHANGED" ]; then
+  echo "[build_and_push_images] No changed services — skipping."
+  exit 0
+fi
+
 set -euo pipefail
 
 REGISTRY="${REGISTRY:-ghcr.io/${GITHUB_REPOSITORY_OWNER}}"
