@@ -19,7 +19,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0           # ensure full history for merge-base
+          fetch-depth: 0            # <-- full history so merge-base works
           persist-credentials: true
 
       - name: Setup Node.js
