@@ -32,6 +32,27 @@ jobs:
       - name: Check pnpm
         run: pnpm -v
 
+      # ADD GIT DIAGNOSTICS HERE (before Compute changed services)
+      - name: Git diagnostics
+        run: |
+          set -x
+          echo "--- Git Version ---"
+          git --version
+          echo "--- Repository Info ---"
+          git rev-parse --is-inside-work-tree
+          git remote -v
+          echo "--- Branches ---"
+          git branch -a
+          echo "--- HEAD Commit ---"
+          git show -s --oneline HEAD || true
+          echo "--- Base Ref (${{ github.base_ref || 'main' }}) ---"
+          git show -s --oneline ${{ github.base_ref || 'main' }} || echo "Could not find base ref"
+          echo "--- Environment Variables ---"
+          echo "DEFAULT_BRANCH=$DEFAULT_BRANCH"
+          echo "GITHUB_BASE_REF=$GITHUB_BASE_REF"
+          echo "GITHUB_REF=$GITHUB_REF"
+          echo "GITHUB_REF_NAME=$GITHUB_REF_NAME"
+
       - name: Compute changed services
         id: changed
         run: |
