@@ -10,31 +10,26 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
-
-    # Minimal permissions for building & pushing to GHCR
     permissions:
       contents: read
       packages: write
       id-token: write
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm'
-          cache-dependency-path: '**/pnpm-lock.yaml'
 
       - name: Ensure pnpm on PATH
         run: bash scripts/pnpm_ensure.sh
 
-      - name: Show tool versions
+      - name: Check pnpm
         run: |
-          node -v
-          npm -v
+          which pnpm || true
+          echo "PATH=$PATH"
           pnpm -v
 
       - name: Install dependencies
@@ -63,6 +58,3 @@ jobs:
           REGISTRY: ghcr.io/${{ github.repository_owner }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/build_and_push_images.sh
-
-      - name: Container scan with Trivy (non-blocking)
-        run: bash scripts/scan_images.sh || echo "scan warnings (non-blocking)"
