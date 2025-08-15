@@ -10,11 +10,12 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+
+    # Minimal permissions for building & pushing to GHCR
     permissions:
-      id-token: write
       contents: read
       packages: write
-      security-events: write
+      id-token: write
 
     steps:
       - name: Checkout
