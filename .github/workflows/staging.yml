@@ -1,8 +1,8 @@
-name: staging
+name: Deploy to Staging
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   # Reuse your shared CI (lint/test/build/push images)
@@ -27,32 +27,50 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Ensure pnpm on PATH
-        run: bash scripts/pnpm_ensure.sh
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
 
-      - name: Check pnpm
+      - name: Verify pnpm
         run: |
-          which pnpm || true
-          echo "PATH=$PATH"
-          pnpm -v
+          echo "PNPM path: $(which pnpm)"
+          pnpm --version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Install psql client
         run: |
           sudo apt-get update
           sudo apt-get install -y postgresql-client
 
-      # 🔎 Show exactly what we're about to deploy
+      - name: Git diagnostics
+        run: |
+          echo "[debug] Git configuration:"
+          git --version
+          git remote -v
+          git branch -a
+          echo "[debug] Fetching all refs:"
+          git fetch --no-tags --prune origin +refs/heads/*:refs/remotes/origin/*
+          echo "[debug] Commit verification:"
+          git show -s --oneline HEAD || echo "HEAD missing"
+          git show -s --oneline origin/main || echo "origin/main missing"
+
       - name: Debug env and changed services
         run: |
+          echo "Environment checks:"
           echo "STAGING_DB_URL set? $([[ -n "${STAGING_DB_URL:-}" ]] && echo yes || echo no)"
           echo "FLY_API_TOKEN set? $([[ -n "${FLY_API_TOKEN:-}" ]] && echo yes || echo no)"
           echo "GITHUB_BASE_REF=${GITHUB_BASE_REF:-}"
           echo "Branch=${GITHUB_REF_NAME}"
+          
           echo "Computing changed services..."
-          bash scripts/changed_services.sh "${GITHUB_BASE_REF:-}" | tee /tmp/changed.txt
-          echo "---- CHANGED:"
+          CHANGED_SERVICES=$(bash scripts/changed_services.sh "${GITHUB_BASE_REF:-$DEFAULT_BRANCH}")
+          echo "$CHANGED_SERVICES" | tee /tmp/changed.txt
+          echo "---- CHANGED SERVICES ----"
           cat /tmp/changed.txt || true
-          echo "---- end list"
+          echo "--------------------------"
         env:
           STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
@@ -62,19 +80,22 @@ jobs:
           STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
         run: |
           echo "[preflight] Testing DB connection..."
-          psql "$STAGING_DB_URL" -Atc "select 'db_ok'" || { echo "[preflight] DB connection failed. Check STAGING_DB_URL format."; exit 2; }
+          psql "$STAGING_DB_URL" -Atc "select 'db_ok'" || { 
+            echo "::error::DB connection failed. Check STAGING_DB_URL format.";
+            exit 1;
+          }
 
-      - name: Run migrations (expand-safe)
+      - name: Run migrations
         env:
           STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
         run: bash scripts/migrate_expand.sh "$STAGING_DB_URL"
 
-      # 🧪 run deploy with full tracing; don't hide errors
       - name: Deploy changed services to staging
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        shell: bash
-        run: bash -x scripts/deploy_changed_services.sh "staging" "staging"
+        run: |
+          echo "Starting deployment..."
+          bash -x scripts/deploy_changed_services.sh "staging" "staging"
 
       - name: Smoke tests
         run: bash scripts/smoke_tests.sh
