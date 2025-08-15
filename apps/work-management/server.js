@@ -9,3 +9,4 @@ const server = http.createServer((req, res) => {
   res.end("work-management service is running\n");
 });
 server.listen(PORT, () => console.log(`listening on ${PORT}`));
+// action
