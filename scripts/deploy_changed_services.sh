@@ -1,14 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
+set -x  # Trace each command
 
-# --- Ensure pnpm exists (self-heal) ---
+# Helpful error message with line number
+trap 'ec=$?; echo "[deploy] failed at line $LINENO with exit $ec"; exit $ec' ERR
+
+# Ensure pnpm exists (self-heal)
 bash scripts/pnpm_ensure.sh
 
 ENV_SUFFIX="${1:-staging}"        # e.g., 'staging', 'prod', 'pr-123'
 DEPLOY_MODE="${2:-staging}"       # 'preview' | 'staging' | 'prod-canary' | 'prod'
-CHANGED=$(bash scripts/changed_services.sh "${GITHUB_BASE_REF:-main}")
 
-echo "Deploying services to ${DEPLOY_MODE} with suffix ${ENV_SUFFIX}:"
+# Determine changed services
+CHANGED="$(bash scripts/changed_services.sh "${GITHUB_BASE_REF:-main}")" || true
+if [[ -z "$CHANGED" ]]; then
+  echo "[deploy] No changed services — nothing to deploy. Exiting 0."
+  exit 0
+fi
+
+echo "[deploy] Deploying services to ${DEPLOY_MODE} with suffix ${ENV_SUFFIX}:"
 echo "$CHANGED"
 
 # Optional config via env vars (set in repo Variables if desired)
@@ -18,7 +28,7 @@ echo "$CHANGED"
 
 # Install flyctl if missing
 if ! command -v fly >/dev/null 2>&1; then
-  echo "Installing flyctl..."
+  echo "[deploy] Installing flyctl..."
   curl -L https://fly.io/install.sh | sh
   export FLYCTL_INSTALL="$HOME/.fly"
   export PATH="$FLYCTL_INSTALL/bin:$PATH"
@@ -27,30 +37,26 @@ fi
 # Helper: create app if missing
 ensure_app() {
   local app_name="$1"
-  set +e
-  fly status --app "$app_name" >/dev/null 2>&1
-  local exists=$?
-  set -e
-  if [ "$exists" -ne 0 ]; then
-    echo "App $app_name not found. Creating..."
-    if [ -n "$FLY_ORG" ]; then
+  if ! fly status --app "$app_name" >/dev/null 2>&1; then
+    echo "[deploy] App $app_name not found. Creating..."
+    if [[ -n "$FLY_ORG" ]]; then
       fly apps create "$app_name" --org "$FLY_ORG" --region "$FLY_REGION"
     else
       fly apps create "$app_name" --region "$FLY_REGION"
     fi
   else
-    echo "App $app_name exists."
+    echo "[deploy] App $app_name exists."
   fi
 }
 
 while read -r SVC; do
-  [ -z "$SVC" ] && continue
+  [[ -z "$SVC" ]] && continue
   SERVICE_DIR="apps/$SVC"
-  [ -d "$SERVICE_DIR" ] || { echo "Skipping $SVC (no apps/$SVC dir)"; continue; }
+  [[ -d "$SERVICE_DIR" ]] || { echo "[deploy] skip $SVC (no apps/$SVC)"; continue; }
 
   # Skip services with no Dockerfile to avoid hard failures
-  if [ ! -f "$SERVICE_DIR/Dockerfile" ]; then
-    echo "Skipping $SVC (no Dockerfile)"
+  if [[ ! -f "$SERVICE_DIR/Dockerfile" ]]; then
+    echo "[deploy] skip $SVC (no Dockerfile)"
     continue
   fi
 
@@ -58,8 +64,8 @@ while read -r SVC; do
   CFG="$SERVICE_DIR/fly.toml"
 
   # Generate a fly.toml if missing
-  if [ ! -f "$CFG" ]; then
-    echo "No fly.toml for $SVC; generating minimal config"
+  if [[ ! -f "$CFG" ]]; then
+    echo "[deploy] No fly.toml for $SVC; generating minimal config"
     cat > "$CFG" <<TOML
 app = "${APP_NAME}"
 primary_region = "${FLY_REGION}"
@@ -83,11 +89,13 @@ TOML
   # Ensure the Fly app exists (non-interactive)
   ensure_app "$APP_NAME"
 
-  echo "Deploying $APP_NAME ..."
-  if [ "$DEPLOY_MODE" = "prod-canary" ]; then
+  echo "[deploy] Deploying $APP_NAME ..."
+  if [[ "$DEPLOY_MODE" = "prod-canary" ]]; then
     fly deploy --config "$CFG" --strategy canary --auto-confirm
   else
     fly deploy --config "$CFG" --strategy immediate --auto-confirm
   fi
 
 done <<< "$CHANGED"
+
+echo "[deploy] Done."
