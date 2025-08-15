@@ -30,6 +30,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-client
 
+      - name: Debug env and changed services
+        run: |
+          echo "STAGING_DB_URL set? $([[ -n "${STAGING_DB_URL:-}" ]] && echo yes || echo no)"
+          echo "GITHUB_BASE_REF=${GITHUB_BASE_REF:-}"
+          echo "Branch=${GITHUB_REF_NAME}"
+          echo "Computing changed services…"
+          bash scripts/changed_services.sh "${GITHUB_BASE_REF:-}" | tee /tmp/changed.txt
+          echo "----"
+          echo "CHANGED services:"
+          cat /tmp/changed.txt || true
+          echo "----"
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+
+
       - name: Run migrations (expand-safe)
         env:
           STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
