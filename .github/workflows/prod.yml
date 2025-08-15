@@ -4,6 +4,7 @@ on:
     tags: [ 'v*.*.*' ]
 
 jobs:
+  # Contract checks (can be expanded later)
   verify-contracts:
     runs-on: ubuntu-latest
     steps:
@@ -23,6 +24,7 @@ jobs:
       - name: Verify contracts
         run: bash scripts/verify_contracts.sh
 
+  # Canary + promote to 100%
   deploy-prod:
     needs: verify-contracts
     runs-on: ubuntu-latest
@@ -32,6 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Ensure Node + pnpm exist IN THIS JOB
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
