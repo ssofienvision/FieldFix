@@ -6,7 +6,10 @@ on:
 jobs:
   verify-contracts:
     runs-on: ubuntu-latest
-    steps:
+    env:
+  DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}  # usually "main"
+
+  steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -26,9 +29,9 @@ jobs:
   deploy-prod:
     needs: verify-contracts
     runs-on: ubuntu-latest
-    environment:
-      name: production
-      url: https://app.example.com
+    env:
+  DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}  # usually "main"
+
     steps:
       - uses: actions/checkout@v4
 
