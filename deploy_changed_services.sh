@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
+CHANGED="$(bash scripts/changed_services.sh "${DEFAULT_BRANCH:-main}")"
+if [ -z "$CHANGED" ]; then
+  echo "[build_and_push_images] No changed services — skipping image build."
+  exit 0
+fi
+
 ENV_SUFFIX="${1:-staging}"
 DEPLOY_MODE="${2:-staging}" # preview | staging | prod-canary | prod
 
