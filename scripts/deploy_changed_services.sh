@@ -3,7 +3,14 @@ set -euo pipefail
 set -x
 trap 'ec=$?; echo "[deploy] failed at line $LINENO with exit $ec"; exit $ec' ERR
 
-# Ensure pnpm
+bash scripts/pnpm_ensure.sh
+
+CHANGED="$(bash scripts/changed_services.sh "${DEFAULT_BRANCH:-main}")" || true
+if [ -z "$CHANGED" ]; then
+  echo "[deploy] No changed services — nothing to deploy."
+  exit 0
+fi
+
 bash scripts/pnpm_ensure.sh
 
 ENV_SUFFIX="${1:-staging}"        # e.g., 'staging', 'prod', 'pr-123'
