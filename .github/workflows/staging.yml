@@ -4,9 +4,11 @@ on:
     branches: [ main ]
 
 jobs:
+  # Reuse your CI (lint/test/build/push images)
   ci:
     uses: ./.github/workflows/reusable-ci.yml
 
+  # Deploy to staging after CI succeeds
   deploy-staging:
     needs: ci
     runs-on: ubuntu-latest
@@ -14,6 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Ensure Node + pnpm exist IN THIS JOB
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
