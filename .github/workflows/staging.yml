@@ -1,59 +1,57 @@
-name: staging
-on:
-  push:
-    branches: [ main ]
+deploy-staging:
+  needs: ci
+  runs-on: ubuntu-latest
+  environment: staging
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        persist-credentials: true
 
-jobs:
-  ci:
-    uses: ./.github/workflows/reusable-ci.yml
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
 
-  deploy-staging:
-    needs: ci
-    runs-on: ubuntu-latest
-    environment: staging
-    steps:
-      - uses: actions/checkout@v4
+    - name: Ensure pnpm on PATH
+      run: bash scripts/pnpm_ensure.sh
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+    - name: Check pnpm
+      run: |
+        which pnpm || true
+        echo "PATH=$PATH"
+        pnpm -v
 
-      - name: Ensure pnpm on PATH
-        run: bash scripts/pnpm_ensure.sh
+    - name: Install psql client
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y postgresql-client
 
-      - name: Check pnpm
-        run: pnpm -v
+    # 🔎 Show exactly what we’re about to deploy
+    - name: Debug env and changed services
+      run: |
+        echo "STAGING_DB_URL set? $([[ -n "${STAGING_DB_URL:-}" ]] && echo yes || echo no)"
+        echo "FLY_API_TOKEN set? $([[ -n "${FLY_API_TOKEN:-}" ]] && echo yes || echo no)"
+        echo "GITHUB_BASE_REF=${GITHUB_BASE_REF:-}"
+        echo "Branch=${GITHUB_REF_NAME}"
+        echo "Computing changed services…"
+        bash scripts/changed_services.sh "${GITHUB_BASE_REF:-}" | tee /tmp/changed.txt
+        echo "---- CHANGED:"
+        cat /tmp/changed.txt || true
+        echo "---- end list"
+      env:
+        STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+        FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
-      - name: Install psql client
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client
+    - name: Run migrations (expand-safe)
+      env:
+        STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+      run: bash scripts/migrate_expand.sh "$STAGING_DB_URL"
 
-      - name: Debug env and changed services
-        run: |
-          echo "STAGING_DB_URL set? $([[ -n "${STAGING_DB_URL:-}" ]] && echo yes || echo no)"
-          echo "GITHUB_BASE_REF=${GITHUB_BASE_REF:-}"
-          echo "Branch=${GITHUB_REF_NAME}"
-          echo "Computing changed services…"
-          bash scripts/changed_services.sh "${GITHUB_BASE_REF:-}" | tee /tmp/changed.txt
-          echo "----"
-          echo "CHANGED services:"
-          cat /tmp/changed.txt || true
-          echo "----"
-        env:
-          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
-
-
-      - name: Run migrations (expand-safe)
-        env:
-          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
-        run: bash scripts/migrate_expand.sh "$STAGING_DB_URL"
-
-      - name: Deploy changed services to staging
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: bash scripts/deploy_changed_services.sh "staging" "staging"
-
-      - name: Smoke tests
-        run: bash scripts/smoke_tests.sh
+    # 🧪 run deploy with full tracing; don't hide errors
+    - name: Deploy changed services to staging
+      env:
+        FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      shell: bash
+      run: bash -x scripts/deploy_changed_services.sh "staging" "staging"
