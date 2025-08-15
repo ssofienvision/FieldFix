@@ -4,11 +4,11 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
-  # 1) Shared CI (lint/test/build/push) using the reusable workflow
+  # Reuse the shared CI
   ci:
     uses: ./.github/workflows/reusable-ci.yml
 
-  # 2) Preview deploy after CI succeeds
+  # Deploy previews after CI passes
   preview:
     needs: ci
     runs-on: ubuntu-latest
@@ -16,10 +16,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0           # ensure full history for merge-base
+          fetch-depth: 0
           persist-credentials: true
 
-      # Ensure Node + pnpm exist IN THIS JOB
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -39,7 +38,7 @@ jobs:
           echo "changed=$CHANGED" >> $GITHUB_OUTPUT
 
       - name: Vercel Preview (web-portal)
-        if: hashFiles('apps/web-portal/package.json') != ''
+        if: ${{ hashFiles('apps/web-portal/package.json') != '' }}
         uses: amondnet/vercel-action@v25
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
@@ -53,3 +52,16 @@ jobs:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           PREVIEW_ID: pr-${{ github.event.number }}
         run: bash scripts/deploy_changed_services.sh "$PREVIEW_ID" "preview"
+
+      - name: Post preview links
+        if: ${{ always() }}
+        run: |
+          echo "### Preview Apps" >> $GITHUB_STEP_SUMMARY
+          echo "- Work Management: https://work-management-pr-${{ github.event.number }}.fly.dev" >> $GITHUB_STEP_SUMMARY
+          echo "- Identity & Access: https://identity-access-pr-${{ github.event.number }}.fly.dev" >> $GITHUB_STEP_SUMMARY
+          echo "- Customer & Property: https://customer-property-pr-${{ github.event.number }}.fly.dev" >> $GITHUB_STEP_SUMMARY
+          echo "- Assets & Warranty: https://assets-warranty-pr-${{ github.event.number }}.fly.dev" >> $GITHUB_STEP_SUMMARY
+          echo "- Technicians & Dispatch: https://technicians-dispatch-pr-${{ github.event.number }}.fly.dev" >> $GITHUB_STEP_SUMMARY
+          echo "- Inventory & Parts: https://inventory-parts-pr-${{ github.event.number }}.fly.dev" >> $GITHUB_STEP_SUMMARY
+          echo "- Billing & Payments: https://billing-payments-pr-${{ github.event.number }}.fly.dev" >> $GITHUB_STEP_SUMMARY
+          echo "- Comms & Audit: https://communications-audit-pr-${{ github.event.number }}.fly.dev" >> $GITHUB_STEP_SUMMARY
