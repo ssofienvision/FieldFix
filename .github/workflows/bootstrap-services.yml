@@ -1,0 +1,25 @@
+name: bootstrap-services
+on:
+  workflow_dispatch:
+
+jobs:
+  scaffold:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Make script executable
+        run: chmod +x scripts/bootstrap_services.sh
+
+      - name: Run scaffolder
+        run: scripts/bootstrap_services.sh
+
+      - name: Commit generated files
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore(bootstrap): scaffold microservice templates"
+          branch: ${{ github.ref_name }}
