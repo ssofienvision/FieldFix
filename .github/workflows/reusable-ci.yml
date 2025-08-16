@@ -1,3 +1,12 @@
+name: reusable-ci
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        required: false
+        type: string
+
 jobs:
   ci:
     runs-on: ubuntu-latest
@@ -24,8 +33,7 @@ jobs:
         run: bash scripts/pnpm_ensure.sh
 
       - name: Make scripts executable
-        run: |
-          chmod +x scripts/*.sh || true
+        run: chmod +x scripts/*.sh || true
 
       - name: Git diagnostics
         run: |
