@@ -13,3 +13,4 @@ app.get('/info', (req, res) => res.json({ service: serviceName, version: process
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => logger.info(`${serviceName} running on :${port}`));
+// change
