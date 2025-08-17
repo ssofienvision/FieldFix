@@ -1,9 +1,18 @@
 {
   "name": "identity-access",
-  "version": "0.1.0",
-  "private": true,
+  "version": "1.0.0",
   "type": "module",
+  "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "pino": "^8.15.0",
+    "pino-http": "^8.5.0",
+    "zod": "^3.22.4"
   }
 }

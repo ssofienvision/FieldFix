@@ -1,16 +1,18 @@
-FROM node:20-alpine
-
-# Make pnpm available inside the container (works on GH runners & locally)
-RUN corepack enable && corepack prepare pnpm@9.0.0 --activate || true
-
+FROM node:20-alpine AS base
 WORKDIR /app
-# Copy minimal files first for better layer caching
-COPY package.json ./
-RUN (pnpm install --prod) || (npm i --omit=dev)
-
-# Copy the rest of the app
+RUN apk add --no-cache curl
+COPY package.json package-lock.json* ./
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
 COPY . .
 
-ENV PORT=3000
-EXPOSE 3000
-CMD ["node","server.js"]
+FROM node:20-alpine
+WORKDIR /app
+RUN apk add --no-cache curl
+COPY --from=base /app /app
+ENV NODE_ENV=production
+ENV PORT=3001
+EXPOSE 3001
+HEALTHCHECK --interval=20s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -fsS http://localhost:3001/health || exit 1
+USER node
+CMD ["npm","start"]

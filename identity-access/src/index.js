@@ -3,7 +3,7 @@ import pino from 'pino';
 import { startTracing } from './otel.js';
 
 const serviceName = process.env.SERVICE_NAME || "identity-access";
-startTracing(serviceName);
+// startTracing(serviceName); // temporarily disabled
 
 const app = express();
 const logger = pino();

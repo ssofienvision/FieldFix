@@ -1,0 +1,50 @@
+version: "3.9"
+services:
+  work-management:
+    build: { context: ./apps/work-management }
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      LOG_LEVEL: debug
+    ports: ["3000:3000"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 2s
+      retries: 3
+
+  identity-access:
+    build: { context: ./apps/identity-access }
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      LOG_LEVEL: debug
+      JWT_SECRET: "dev-secret"
+    ports: ["3001:3001"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 2s
+      retries: 3
+
+  api-gateway:
+    build: { context: ./apps/api-gateway }
+    environment:
+      NODE_ENV: development
+      PORT: 8080
+      LOG_LEVEL: debug
+      WORK_URL: http://work-management:3000
+      IDENTITY_URL: http://identity-access:3001
+    ports: ["8080:8080"]
+    depends_on:
+      - work-management
+      - identity-access
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 2s
+      retries: 3
+
+networks:
+  default:
+    name: fieldfix-network
